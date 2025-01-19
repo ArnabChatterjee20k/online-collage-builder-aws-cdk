@@ -8,14 +8,20 @@ import {
   S3Client,
   HeadObjectCommand,
 } from "@aws-sdk/client-s3";
-import * as crypto from "crypto"
+import {
+  SendMessageCommand,
+  SendMessageCommandInput,
+  SQSClient,
+} from "@aws-sdk/client-sqs";
+import * as crypto from "crypto";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { APIGatewayProxyEvent, Handler } from "aws-lambda";
 const s3Client = new S3Client();
 const S3_ORIGINAL_IMAGE_BUCKET = process.env.originalImageBucketName as string;
 const S3_TRANSFORMED_IMAGE_BUCKET = process.env
   .transformedImageBucket as string;
-
+const QUEUE_URL = process.env.queueURL;
+const sqsClient = new SQSClient();
 export const handler: Handler = async (event: APIGatewayProxyEvent) => {
   try {
     const method = event.httpMethod;
@@ -34,6 +40,22 @@ export const handler: Handler = async (event: APIGatewayProxyEvent) => {
       const url = await getSignedUrl(s3Client, getCommand, { expiresIn: 3600 });
       return getResponse(200, { url, is_file });
     }
+
+    //for starting the collage process
+    if (method === "POST") {
+      // api payload
+      const body = JSON.parse(event.body as string);
+      const layout = body.layout;
+      const queueParams: SendMessageCommandInput = {
+        QueueUrl: QUEUE_URL,
+        MessageBody: JSON.stringify({ layout, uuid }),
+      };
+      const messageEnque = new SendMessageCommand(queueParams);
+      const result = await sqsClient.send(messageEnque);
+      // TODO: db save for consistency
+      return getResponse(201, { status: "processing", uuid });
+    }
+
     // for getting url to upload
     if (method === "PUT") {
       const uploadParams: PutObjectCommandInput = {
