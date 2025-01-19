@@ -8,6 +8,7 @@ import {
   S3Client,
   HeadObjectCommand,
 } from "@aws-sdk/client-s3";
+import * as crypto from "crypto"
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { APIGatewayProxyEvent, Handler } from "aws-lambda";
 const s3Client = new S3Client();
@@ -33,13 +34,13 @@ export const handler: Handler = async (event: APIGatewayProxyEvent) => {
       const url = await getSignedUrl(s3Client, getCommand, { expiresIn: 3600 });
       return getResponse(200, { url, is_file });
     }
-    if (method === "POST") {
+    // for getting url to upload
+    if (method === "PUT") {
       const uploadParams: PutObjectCommandInput = {
         Bucket: S3_ORIGINAL_IMAGE_BUCKET,
-        Key: uuid,
+        Key: `${uuid}/${crypto.randomUUID().split("-")[0]}`,
       };
       // TODO: validate the payload
-      const body = JSON.parse(event.body as string);
       const putCommand = new PutObjectCommand(uploadParams);
       const url = await getSignedUrl(s3Client, putCommand, { expiresIn: 3600 });
       return getResponse(200, { url });
