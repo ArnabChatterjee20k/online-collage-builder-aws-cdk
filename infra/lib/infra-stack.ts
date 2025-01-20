@@ -23,7 +23,7 @@ export class InfraStack extends cdk.Stack {
     const OriginalImageBucketName = this.node.tryGetContext(
       "originalImageBucketName"
     );
-    const TransformedImageBucket = this.node.tryGetContext(
+    const TransformedImageBucketName = this.node.tryGetContext(
       "transformedImageBucket"
     );
 
@@ -45,11 +45,11 @@ export class InfraStack extends cdk.Stack {
       });
     }
 
-    if (transformedImageBucket) {
+    if (TransformedImageBucketName) {
       transformedImageBucket = s3.Bucket.fromBucketName(
         this,
         "for-transformed-images",
-        TransformedImageBucket
+        TransformedImageBucketName
       );
     } else {
       transformedImageBucket = new s3.Bucket(this, "for-transformed-images", {
@@ -85,6 +85,17 @@ export class InfraStack extends cdk.Stack {
         tracing: lambda.Tracing.ACTIVE, // Enables Lambda X-Ray tracing (helps debug)
       }
     );
+
+    const fileServiceLambdaFunction = new lambda.Function(
+      this,
+      "FileServiceLambda",
+      {
+        runtime: lambda.Runtime.NODEJS_20_X,
+        handler: "index.handler",
+        environment: lambdaEnv,
+        code: lambda.Code.fromAsset(path.join(__dirname, "../../file-service")),
+      }
+    );
     // attaching s3 access policy to the lambda
     const iamPolicyStatements = [
       new cdk.aws_iam.PolicyStatement({
@@ -95,17 +106,30 @@ export class InfraStack extends cdk.Stack {
           "s3:DeleteObject", // Delete objects
         ],
         resources: [
+          // ARNs for bucket-level operations (needed for ListBucket)
+          `arn:aws:s3:::${originalImageBucket.bucketName}`,
+          `arn:aws:s3:::${transformedImageBucket.bucketName}`,
+          // ARNs for object-level operations
           `arn:aws:s3:::${originalImageBucket.bucketName}/*`,
-          `arn:aws:s3:::${originalImageBucket.bucketName}/*`
+          `arn:aws:s3:::${transformedImageBucket.bucketName}/*`,
         ],
       }),
     ];
-    queue.grantSendMessages(userAPILambdaFunction)
-    userAPILambdaFunction.role?.attachInlinePolicy(
-      new cdk.aws_iam.Policy(this, "read-write-polic", {
-        statements: iamPolicyStatements,
-      })
-    );
+    queue.grantSendMessages(userAPILambdaFunction);
+    queue.grantConsumeMessages(fileServiceLambdaFunction);
+
+    const readWritePolicy = new cdk.aws_iam.Policy(this, "read-write-polic", {
+      statements: iamPolicyStatements,
+    });
+    userAPILambdaFunction.role?.attachInlinePolicy(readWritePolicy);
+    fileServiceLambdaFunction.role?.attachInlinePolicy(readWritePolicy);
+    
+    // setting trigger for queue
+    new lambda.EventSourceMapping(this, "QueueTrigger", {
+      target: fileServiceLambdaFunction,
+      eventSourceArn: queue.queueArn,
+      batchSize: 1,
+    });
 
     const api = new apiGateway.RestApi(this, "APIServiceREST", {
       restApiName: "User-API",

@@ -12,12 +12,15 @@
   "license": "ISC",
   "dependencies": {
     "@aws-sdk/client-s3": "^3.726.1",
+    "@aws-sdk/client-sqs": "^3.731.1",
+    "@aws-sdk/s3-request-presigner": "^3.726.1",
     "aws-sdk": "^2.1692.0",
-    "sharp": "^0.33.5",
-    "tsc": "^2.0.4"
+    "sharp": "^0.33.5"
   },
   "devDependencies": {
     "@types/aws-lambda": "^8.10.147",
+    "dotenv": "^16.4.7",
+    "ts-node": "^10.9.2",
     "typescript": "^5.7.3"
   }
 }
