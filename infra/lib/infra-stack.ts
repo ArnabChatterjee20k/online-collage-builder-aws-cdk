@@ -5,8 +5,8 @@ import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as apiGateway from "aws-cdk-lib/aws-apigateway";
 import * as s3 from "aws-cdk-lib/aws-s3";
 import * as sqs from "aws-cdk-lib/aws-sqs";
-import * as s3Deploy from "aws-cdk-lib/aws-s3-deployment";
-
+import * as cloudfront from "aws-cdk-lib/aws-cloudfront";
+import * as origins from "aws-cdk-lib/aws-cloudfront-origins";
 import * as path from "path";
 export class InfraStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
@@ -59,6 +59,36 @@ export class InfraStack extends cdk.Stack {
         autoDeleteObjects: true,
       });
     }
+    // cache policy for transformedImageBucket
+    const cachePolicy = new cloudfront.CachePolicy(this, "CollageCache", {
+      defaultTtl: cdk.Duration.hours(1),
+      minTtl: cdk.Duration.seconds(0),
+      maxTtl: cdk.Duration.hours(2),
+    });
+    const distribution = new cloudfront.Distribution(
+      this,
+      "CollageCloudFrontDistribution",
+      {
+        defaultBehavior: {
+          cachePolicy: cachePolicy,
+          // to redirect HTTP to HTTPS
+          viewerProtocolPolicy:
+            cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+          origin: new origins.OriginGroup({
+            primaryOrigin: origins.S3BucketOrigin.withOriginAccessControl(
+              transformedImageBucket
+            ),
+            // we can use a separate bucket or http request
+            fallbackOrigin: origins.S3BucketOrigin.withOriginAccessControl(
+              transformedImageBucket
+            ),
+          }),
+        },
+      }
+    );
+    new cdk.CfnOutput(this, "CloudFrontDomainName", {
+      value: distribution.domainName,
+    });
 
     // queues
     const queue = new sqs.Queue(this, "Image-Queue", {
@@ -123,7 +153,7 @@ export class InfraStack extends cdk.Stack {
     });
     userAPILambdaFunction.role?.attachInlinePolicy(readWritePolicy);
     fileServiceLambdaFunction.role?.attachInlinePolicy(readWritePolicy);
-    
+
     // setting trigger for queue
     new lambda.EventSourceMapping(this, "QueueTrigger", {
       target: fileServiceLambdaFunction,

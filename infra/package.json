@@ -9,7 +9,9 @@
     "watch": "tsc -w",
     "test": "jest",
     "cdk": "cdk",
-    "deploy:test": "cdklocal bootstrap && cdklocal deploy"
+    "deploy:test": "cdklocal bootstrap && cdklocal deploy",
+    "deploy:prod":"cdk bootstrap && cdk deploy",
+    "deploy:destroy":"cdk destroy"
   },
   "devDependencies": {
     "@types/jest": "^29.5.14",

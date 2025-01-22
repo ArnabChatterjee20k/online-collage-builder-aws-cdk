@@ -17,7 +17,7 @@ const S3_TRANSFORMED_IMAGE_BUCKET = process.env
 const QUEUE_URL = process.env.queueURL;
 const s3Client = new S3Client({
   // required for local dev
-  forcePathStyle:true
+  forcePathStyle: true,
 });
 
 const sqsClient = new SQSClient();
@@ -39,6 +39,7 @@ export const handler: Handler = async (event: SQSEvent) => {
       });
     }
     const collage = await createCollage(layout, buffers);
+    console.info(`New collage of size ${collage.length}`)
     const newImage = await uploadImage(uuid, collage);
     if (!newImage) {
       console.warn({ message: "Not uploaded", uuid: uuid, status: "warning" });
@@ -57,7 +58,7 @@ export const handler: Handler = async (event: SQSEvent) => {
 
 async function getImageBuffers(prefix: string) {
   console.log("Fetching objects with prefix:", prefix);
-  console.log({S3_ORIGINAL_IMAGE_BUCKET})
+  console.log({ S3_ORIGINAL_IMAGE_BUCKET });
   const imagesByUUIDParam: ListObjectsV2CommandInput = {
     Bucket: S3_ORIGINAL_IMAGE_BUCKET,
     Prefix: `${prefix}`,
@@ -99,15 +100,16 @@ async function getImageBuffers(prefix: string) {
 }
 
 async function uploadImage(key: string, body: Buffer) {
+  console.log({ key, S3_TRANSFORMED_IMAGE_BUCKET });
   const listParams: PutObjectCommandInput = {
     Bucket: S3_TRANSFORMED_IMAGE_BUCKET,
-    Key: key.endsWith('.png') ? key : `${key}.png`, // Ensure key has .png extension
+    Key: key.endsWith(".png") ? key : `${key}.png`, // Ensure key has .png extension
     Body: body,
-    ContentType: 'image/png', // Set the correct content type
+    ContentType: "image/png", // Set the correct content type
     Metadata: {
-      'Content-Type': 'image/png',
-      'transformed': 'true'
-    }
+      "Content-Type": "image/png",
+      transformed: "true",
+    },
   };
   const putObject = new PutObjectCommand(listParams);
   const res = await s3Client.send(putObject);
@@ -144,12 +146,16 @@ async function createCollage(
 ) {
   // First, get dimensions of all images
   const imageDimensions = await Promise.all(
-    images.map(buffer => sharp(buffer).metadata())
+    images.map((buffer) => sharp(buffer).metadata())
   );
 
   // Log the dimensions of the images
   imageDimensions.forEach((metadata, index) => {
-    console.log(`Image ${index + 1} - Width: ${metadata.width}, Height: ${metadata.height}`);
+    console.log(
+      `Image ${index + 1} - Width: ${metadata.width}, Height: ${
+        metadata.height
+      }`
+    );
   });
 
   // Calculate target dimensions for each image and overall collage
@@ -158,8 +164,8 @@ async function createCollage(
     images.map(async (buffer, index) => {
       const resizedBuffer = await sharp(buffer)
         .resize(targetSize, targetSize, {
-          fit: 'contain',
-          background: { r: 255, g: 255, b: 255 }
+          fit: "contain",
+          background: { r: 255, g: 255, b: 255 },
         })
         .toBuffer();
       return resizedBuffer;
@@ -167,8 +173,10 @@ async function createCollage(
   );
 
   // Calculate collage dimensions
-  const collageWidth = orientation === "horizontal" ? targetSize * images.length : targetSize;
-  const collageHeight = orientation === "horizontal" ? targetSize : targetSize * images.length;
+  const collageWidth =
+    orientation === "horizontal" ? targetSize * images.length : targetSize;
+  const collageHeight =
+    orientation === "horizontal" ? targetSize : targetSize * images.length;
 
   // Create composite array
   const compositeArray = processedImages.map((buffer, index) => ({
@@ -192,7 +200,9 @@ async function createCollage(
 
   // Log final image dimensions for verification
   const finalMetadata = await sharp(finalImageBuffer).metadata();
-  console.log(`Final Collage - Width: ${finalMetadata.width}, Height: ${finalMetadata.height}`);
+  console.log(
+    `Final Collage - Width: ${finalMetadata.width}, Height: ${finalMetadata.height}`
+  );
 
   return finalImageBuffer;
 }
